@@ -51,6 +51,38 @@ export function createBrowserClient<
 		cookies = cookies || {};
 	}
 
+	const deleteAllChunks = async (key: string) => {
+		await deleteChunks(
+			key,
+			async (chunkName) => {
+				if (typeof cookies.get === 'function') {
+					return await cookies.get(chunkName);
+				}
+				if (isBrowser()) {
+					const documentCookies = parse(document.cookie);
+					return documentCookies[chunkName];
+				}
+			},
+			async (chunkName) => {
+				if (typeof cookies.remove === 'function') {
+					await cookies.remove(chunkName, {
+						...DEFAULT_COOKIE_OPTIONS,
+						...cookieOptions,
+						maxAge: 0
+					});
+				} else {
+					if (isBrowser()) {
+						document.cookie = serialize(chunkName, '', {
+							...DEFAULT_COOKIE_OPTIONS,
+							...cookieOptions,
+							maxAge: 0
+						});
+					}
+				}
+			}
+		);
+	};
+
 	const cookieClientOptions = {
 		global: {
 			headers: {
@@ -78,26 +110,30 @@ export function createBrowserClient<
 					return chunkedCookie;
 				},
 				setItem: async (key: string, value: string) => {
+					// first remove all chunks so there is no overlap
+					await deleteAllChunks(key);
+
 					const chunks = await createChunks(key, value);
-					await Promise.all(
-						chunks.map(async (chunk) => {
-							if (typeof cookies.set === 'function') {
-								await cookies.set(chunk.name, chunk.value, {
+
+					for (let i = 0; i < chunks.length; i += 1) {
+						const chunk = chunks[i];
+
+						if (typeof cookies.set === 'function') {
+							await cookies.set(chunk.name, chunk.value, {
+								...DEFAULT_COOKIE_OPTIONS,
+								...cookieOptions,
+								maxAge: DEFAULT_COOKIE_OPTIONS.maxAge
+							});
+						} else {
+							if (isBrowser()) {
+								document.cookie = serialize(chunk.name, chunk.value, {
 									...DEFAULT_COOKIE_OPTIONS,
 									...cookieOptions,
 									maxAge: DEFAULT_COOKIE_OPTIONS.maxAge
 								});
-							} else {
-								if (isBrowser()) {
-									document.cookie = serialize(chunk.name, chunk.value, {
-										...DEFAULT_COOKIE_OPTIONS,
-										...cookieOptions,
-										maxAge: DEFAULT_COOKIE_OPTIONS.maxAge
-									});
-								}
 							}
-						})
-					);
+						}
+					}
 				},
 				removeItem: async (key: string) => {
 					if (typeof cookies.remove === 'function' && typeof cookies.get !== 'function') {
@@ -107,35 +143,7 @@ export function createBrowserClient<
 						return;
 					}
 
-					await deleteChunks(
-						key,
-						async (chunkName) => {
-							if (typeof cookies.get === 'function') {
-								return await cookies.get(chunkName);
-							}
-							if (isBrowser()) {
-								const documentCookies = parse(document.cookie);
-								return documentCookies[chunkName];
-							}
-						},
-						async (chunkName) => {
-							if (typeof cookies.remove === 'function') {
-								await cookies.remove(chunkName, {
-									...DEFAULT_COOKIE_OPTIONS,
-									...cookieOptions,
-									maxAge: 0
-								});
-							} else {
-								if (isBrowser()) {
-									document.cookie = serialize(chunkName, '', {
-										...DEFAULT_COOKIE_OPTIONS,
-										...cookieOptions,
-										maxAge: 0
-									});
-								}
-							}
-						}
-					);
+					await deleteAllChunks(key);
 				}
 			}
 		}

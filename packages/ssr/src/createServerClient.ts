@@ -89,9 +89,9 @@ export function createServerClient<
 					return chunkedCookie;
 				},
 				setItem: async (key: string, value: string) => {
-					if (typeof coookies.set === 'function') {
+					if (typeof cookies.set === 'function') {
 						// first delete all chunks so that there would be no overlap
-						await deleteAllChunks();
+						await deleteAllChunks(key);
 
 						const chunks = createChunks(key, value);
 
